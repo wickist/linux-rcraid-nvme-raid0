@@ -1,0 +1,34 @@
+# AMD proprietary binary blob — NEVER commit
+dkms/rcraid/src/rcblob.x86_64
+dkms/rcraid/src/rcblob.x86_64.o
+dkms/rcraid/src/.rcblob.x86_64.o.cmd
+vendor/
+results/raw-logs/
+
+# Downloaded AMD driver archives
+*.zip
+*.tar.gz
+*.iso
+*.rpm
+*.deb
+*.7z
+
+# Build artifacts
+*.o
+*.ko
+*.ko.zst
+*.mod.c
+.modinfo
+.tmp_versions/
+Module.symvers
+modules.order
+.*.cmd
+.*.d
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

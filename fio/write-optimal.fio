@@ -1,0 +1,21 @@
+; write-optimal.fio
+; Optimal sequential write profile for mdadm RAID0.
+; Validated at 25.5–27.1 GB/s on 4× Samsung 990 PRO + kernel 6.14.
+;
+; Usage:
+;   sudo fio fio/write-optimal.fio
+;
+[global]
+ioengine=libaio
+direct=1
+rw=write
+bs=1M
+size=4G
+numjobs=4
+iodepth=64
+runtime=30
+time_based=1
+group_reporting=1
+
+[write]
+filename=/mnt/raid0/fio-write

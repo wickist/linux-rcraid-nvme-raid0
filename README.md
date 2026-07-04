@@ -1,0 +1,198 @@
+# linux-rcraid-nvme-raid0
+
+> AMD `rcraid` Linux kernel port (6.14+), DKMS build, NVMe RAID0 setup, mdadm/XFS optimization, and fio benchmarks for high-speed workstation storage.
+
+[![Kernel](https://img.shields.io/badge/kernel-6.14%2B-blue.svg)](https://www.kernel.org/)
+[![License](https://img.shields.io/badge/license-MIT--Patches-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-WRX80%20%7C%20TRX40%20%7C%20X570-lightgrey.svg)](https://www.amd.com/)
+[![RAID](https://img.shields.io/badge/RAID-NVMe%20RAID0-orange.svg)](docs/04-mdadm-raid0-setup.md)
+
+---
+
+## 🎯 What this project solves
+
+AMD ships the **RAIDXpert2 Linux driver (`rcraid`)** as a binary-blob + glue-source package that targets **old kernels (5.x)**. On modern kernels (6.14+) it does not compile, breaking **hardware NVMe RAID** for anyone on Threadripper Pro / WRX80 / TRX40 / X570 platforms.
+
+This repository:
+
+1. **Patches the AMD 9.3.0 `rcraid` source** so it compiles on **Linux 6.14+**.
+2. Packages it as **DKMS** so it auto-rebuilds on every kernel update.
+3. Provides **mdadm RAID0** as a higher-throughput alternative with **fio benchmark profiles** and tuning scripts.
+4. Documents the **entire journey**: kernel port → DKMS → NVMe bind/unbind → IOMMU workaround → systemd service → mdadm fallback → read/write tuning.
+
+> ⚠️ **TL;DR for the impatient:** if you just want maximum throughput from 4× NVMe SSDs and don't specifically need AMD's hardware RAID, jump straight to **[mdadm setup](docs/04-mdadm-raid0-setup.md)**. The rcraid port is provided for users who need BIOS-visible RAID (e.g. dual-boot with Windows).
+
+---
+
+## ⚡ Final performance (4× Samsung 990 PRO, mdadm RAID0, XFS)
+
+| Workload | Throughput | IOPS | % of raw HW |
+|---|---:|---:|---:|
+| **Sequential Read 1M** (4 jobs, depth 64) | **27.7 GB/s** | 27K | **94%** |
+| **Sequential Write 1M** | **25.5 GB/s** | 25K | **94%** |
+| **Sequential Write 4M** | **27.1 GB/s** | 7K | — |
+| Random Read 4K | 2.4 GB/s | **597K** | — |
+| Random Write 4K (direct) | 89 MB/s | 22K | — |
+
+**Raw 4× NVMe ceiling measured at 29.5 GB/s** — we reach **94% of theoretical maximum** through the software stack.
+
+### rcraid vs mdadm (same 4 SSDs)
+
+| Path | Seq Read | Seq Write | Random Read 4K |
+|---|---:|---:|---:|
+| Raw 4 NVMe (no RAID) | 29.5 GB/s | 27.2 GB/s | — |
+| **mdadm RAID0** (recommended) | **27.7 GB/s** | **27.1 GB/s** | **597K IOPS** |
+| rcraid (single SCSI queue) | 16.6 GB/s | 16.7 GB/s | 152K IOPS |
+
+rcraid uses a single SCSI host queue, which caps aggregate throughput at ~16.6 GB/s regardless of tuning. mdadm preserves native NVMe blk-mq multi-queue and scales near-linearly.
+
+---
+
+## 🧰 Hardware reference (validated)
+
+| Component | Model |
+|---|---|
+| CPU | AMD Ryzen Threadripper PRO 3945WX (12c/24t) |
+| Motherboard | ASUS Pro WS WRX80E-SAGE SE WIFI |
+| PCIe card | ASUS Hyper M.2 x16 Gen4 (PCIEX16_7, x4×4 bifurcation) |
+| RAID member SSDs | 4× Samsung 990 PRO 1TB (Hyper M.2 card) |
+| Boot SSD | 1× KIOXIA Exceria Pro 2TB (CPU-attached NVMe) |
+| OS | Ubuntu 24.04 LTS, kernel `6.14.0-37-generic` |
+
+---
+
+## 📦 Repository layout
+
+```
+linux-rcraid-nvme-raid0/
+├── README.md                       ← you are here
+├── LICENSE                         ← MIT (covers patches/scripts only)
+├── .gitignore
+├── dkms/rcraid/                    ← ready-to-build DKMS source tree
+│   ├── dkms.conf
+│   ├── src/                        ← patched AMD 9.3.0 sources
+│   └── post_install / post_remove
+├── patches/kernel-6.14/            ← individual patch files + CHANGELOG
+├── scripts/                        ← setup, blob extraction, tuning
+│   ├── fetch-and-extract-rcblob.sh
+│   ├── verify-blob.sh
+│   ├── install-rcraid-dkms.sh
+│   ├── setup-mdadm-raid0.sh
+│   ├── tune-storage-runtime.sh
+│   └── run-benchmarks.sh
+├── fio/                            ← reproducible benchmark profiles
+│   ├── read-optimal.fio
+│   ├── write-optimal.fio
+│   ├── raw-4nvme-read.fio
+│   └── regression.fio
+├── docs/                           ← deep technical documentation
+│   ├── 01-problem.md
+│   ├── 02-rcraid-kernel-port.md
+│   ├── 03-proprietary-blob.md
+│   ├── 04-mdadm-raid0-setup.md
+│   ├── 05-xfs-optimization.md
+│   ├── 06-benchmarks.md
+│   ├── 07-troubleshooting.md
+│   └── 08-results.md
+└── results/
+    ├── fio-summary.md
+    └── hardware-topology.md
+```
+
+---
+
+## 🚀 Quick start
+
+### Option A — mdadm RAID0 (recommended, max throughput)
+
+```bash
+git clone https://github.com/<owner>/linux-rcraid-nvme-raid0.git
+cd linux-rcraid-nvme-raid0
+
+# 1. Create the array on 4 NVMe SSDs (EDIT devices first!)
+sudo bash scripts/setup-mdadm-raid0.sh /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
+
+# 2. Apply runtime tuning (scheduler, read-ahead, sysctl, udev)
+sudo bash scripts/tune-storage-runtime.sh /dev/md0
+
+# 3. Benchmark
+sudo bash scripts/run-benchmarks.sh /mnt/raid0
+```
+
+See **[docs/04-mdadm-raid0-setup.md](docs/04-mdadm-raid0-setup.md)** for full details.
+
+### Option B — rcraid DKMS port (BIOS-visible hardware RAID)
+
+```bash
+git clone https://github.com/<owner>/linux-rcraid-nvme-raid0.git
+cd linux-rcraid-nvme-raid0
+
+# 1. Download AMD RAID driver from AMD.com, place the archive in vendor/
+#    https://www.amd.com/en/support/downloads/drivers.html/chipsets/swrx8/wrx80.html
+cp ~/Downloads/raid_linux_driver_930_00276.zip vendor/
+
+# 2. Extract the proprietary blob into dkms/rcraid/src/
+bash scripts/fetch-and-extract-rcblob.sh vendor/raid_linux_driver_930_00276.zip
+
+# 3. Verify blob integrity
+bash scripts/verify-blob.sh dkms/rcraid/src/rcblob.x86_64
+
+# 4. Install as DKMS (auto-rebuilds on kernel updates)
+sudo bash scripts/install-rcraid-dkms.sh
+```
+
+See **[docs/02-rcraid-kernel-port.md](docs/02-rcraid-kernel-port.md)** for the full kernel-port writeup.
+
+---
+
+## 🔐 Proprietary AMD binary blob
+
+**This repository does NOT redistribute AMD proprietary binaries.**
+
+The `rcblob.x86_64` file (a 10.5 MB prebuilt closed-source object inside the AMD RAID driver) is **owned by AMD** and is subject to AMD's End User License Agreement. We cannot host it here.
+
+Users must obtain it themselves from AMD's official download page and run the provided `fetch-and-extract-rcblob.sh` script to place it at `dkms/rcraid/src/rcblob.x86_64` before building.
+
+See **[docs/03-proprietary-blob.md](docs/03-proprietary-blob.md)** for details and SHA-256 verification.
+
+---
+
+## 📚 Documentation
+
+| Doc | What it covers |
+|---|---|
+| [01-problem.md](docs/01-problem.md) | Why AMD's stock driver fails on modern kernels |
+| [02-rcraid-kernel-port.md](docs/02-rcraid-kernel-port.md) | The 14 kernel API changes we patched |
+| [03-proprietary-blob.md](docs/03-proprietary-blob.md) | `rcblob.x86_64` handling, license, verification |
+| [04-mdadm-raid0-setup.md](docs/04-mdadm-raid0-setup.md) | Higher-throughput software RAID alternative |
+| [05-xfs-optimization.md](docs/05-xfs-optimization.md) | XFS stripe geometry, mount options, queue tuning |
+| [06-benchmarks.md](docs/06-benchmarks.md) | fio profiles, methodology, how to reproduce |
+| [07-troubleshooting.md](docs/07-troubleshooting.md) | `already registered`, XFS shutdown, IO_PAGE_FAULT, ... |
+| [08-results.md](docs/08-results.md) | Full benchmark tables, rcraid vs mdadm |
+
+---
+
+## ⚠️ Disclaimer
+
+* This project is **not affiliated with AMD**. AMD®, RAIDXpert2™, Threadripper™ are trademarks of Advanced Micro Devices, Inc.
+* The `rcraid` driver source originates from AMD's `raid_linux_driver_930_00276` package. Only our **kernel-compatibility patches and glue scripts** are MIT-licensed — the driver itself remains under AMD's proprietary license.
+* **No warranty.** You can brick your boot process if you follow the rcraid path incorrectly. Always keep a separate boot disk (we used a KIOXIA SSD on the CPU-attached NVMe slot, never touched by RAID).
+* The mdadm path is non-destructive to BIOS RAID metadata if you don't zero the superblocks — but if you do, your BIOS array is gone. Back up first.
+
+---
+
+## 🤝 Contributing
+
+PRs welcome, especially:
+* Patches for kernels beyond 6.14 (6.15, 6.16, 6.17+)
+* Additional chipset/platform validation (WRX90, TRX50, X670E, ...)
+* fio profiles for real-world workloads (DuckDB, Parquet, vector DBs, ML model loading)
+
+Open an issue first if you want to discuss scope.
+
+---
+
+## 📝 License
+
+* **Patches, scripts, docs, fio profiles, DKMS config**: [MIT License](LICENSE)
+* **`rcraid` driver source (`src/*.c`, `src/*.h`, `rcblob.x86_64`)**: AMD proprietary — see `LICENSE_SDK` inside the original AMD package. Not covered by this repo's MIT license.

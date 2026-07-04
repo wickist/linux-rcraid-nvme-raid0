@@ -1,0 +1,32 @@
+; regression.fio
+; Quick (~3-minute) sanity test to run after config/kernel changes.
+; Same profile as read-optimal/write-optimal but shorter runtime and
+; smaller files so a CI run finishes fast.
+;
+; Usage:
+;   sudo fio fio/regression.fio
+;
+[global]
+ioengine=libaio
+direct=1
+size=1G
+numjobs=4
+iodepth=64
+runtime=10
+time_based=1
+group_reporting=1
+
+[seq-read]
+filename=/mnt/raid0/fio-reg-r
+rw=read
+bs=1M
+
+[seq-write]
+filename=/mnt/raid0/fio-reg-w
+rw=write
+bs=1M
+
+[rand-read]
+filename=/mnt/raid0/fio-reg-rr
+rw=randread
+bs=4K

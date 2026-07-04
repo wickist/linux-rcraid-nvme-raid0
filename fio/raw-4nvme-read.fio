@@ -1,0 +1,34 @@
+; raw-4nvme-read.fio
+; Bypass mdadm/XFS and read each NVMe directly to measure the hardware
+; ceiling. Use this to diagnose whether slow throughput is the SSD's
+; fault or the kernel's.
+;
+; Destructive only if you flip rw=read to rw=write. As-is, read-only.
+; Edit the filenames below to match your device names.
+;
+; Usage:
+;   sudo fio fio/raw-4nvme-read.fio
+;
+[global]
+ioengine=io_uring
+direct=1
+rw=read
+bs=1M
+iodepth=128
+runtime=30
+time_based=1
+group_reporting=1
+offset=10G
+size=64G
+
+[nvme1]
+filename=/dev/nvme1n1
+
+[nvme2]
+filename=/dev/nvme2n1
+
+[nvme3]
+filename=/dev/nvme3n1
+
+[nvme4]
+filename=/dev/nvme4n1

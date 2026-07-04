@@ -1,0 +1,8 @@
+# SHA-256 manifest for the AMD proprietary binary blob.
+# These hashes are derived from AMD's raid_linux_driver_930_00276 package.
+# They let users verify they extracted the correct blob.
+#
+# Source: raid_linux_driver_930_00276.zip (AMD official)
+# Section: Ubuntu20.04.02/driver_sdk/src/rcblob.x86_64
+
+0a536dd9368b1d2e299e4b0a562024634c8467bed3e926058bb2f7112eee658a  rcblob.x86_64

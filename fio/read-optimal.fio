@@ -1,0 +1,25 @@
+; read-optimal.fio
+; Optimal sequential read profile for mdadm RAID0 over N NVMe SSDs.
+; Validated at 27.7 GB/s on 4× Samsung 990 PRO + WRX80 + kernel 6.14.
+;
+; KEY: do NOT raise numjobs above the number of physical NVMe SSDs.
+; mdadm dm-stripe serializes across stripes — beyond 4 jobs × 64 depth,
+; latency rises faster than throughput and read collapses to ~19.7 GB/s.
+;
+; Usage:
+;   sudo fio fio/read-optimal.fio --filename=/mnt/raid0/fio-read
+;
+[global]
+ioengine=libaio
+direct=1
+rw=read
+bs=1M
+size=4G
+numjobs=4
+iodepth=64
+runtime=30
+time_based=1
+group_reporting=1
+
+[read]
+filename=/mnt/raid0/fio-read
