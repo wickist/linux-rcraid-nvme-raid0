@@ -48,6 +48,60 @@ rcraid uses a single SCSI host queue, which caps aggregate throughput at ~16.6 G
 
 ---
 
+## 🤖 Why this matters for AI / LLM workloads
+
+This project is especially useful for **local AI workstations** that move
+large model files, datasets and checkpoints.
+
+A 4× NVMe RAID0 array does **not** make GPU inference faster by itself —
+token generation is usually limited by GPU compute, VRAM bandwidth and
+model architecture. What it **does** improve is the storage side of the
+workflow:
+
+| ✅ Improved by fast NVMe RAID0 | ❌ Not directly affected |
+|---|---|
+| Loading large GGUF / safetensors / checkpoint files | GPU token/s during inference |
+| Moving models between cache, workspace and runtimes | Model architecture / quantization |
+| Hugging Face / Transformers cache performance | VRAM capacity |
+| DuckDB / Parquet scans over large local datasets | CUDA / ROCm compute throughput |
+| Vector database indexing and rebuilds | |
+| ML dataset staging and preprocessing | |
+
+On the validated system, the mdadm RAID0 + XFS path reaches up to
+**27.7 GB/s sequential read** and **25.5–27.1 GB/s sequential write**,
+close to the raw 4× NVMe hardware ceiling. For comparison, a single
+Samsung 990 PRO tops out around 7 GB/s — so the RAID0 array loads
+multi-hundred-GB model files roughly **4× faster** than a single SSD.
+
+## ⚡ Quick AI Win: put your model cache on the RAID0 array
+
+After creating and mounting the RAID0 array at `/mnt/raid0`, move your
+AI model cache there so large model downloads, cache reads and
+checkpoint movement happen on the high-throughput volume.
+
+### Hugging Face / Transformers
+
+```bash
+mkdir -p /mnt/raid0/ai-cache/huggingface
+
+export HF_HOME=/mnt/raid0/ai-cache/huggingface
+export HF_HUB_CACHE=/mnt/raid0/ai-cache/huggingface/hub
+```
+
+To persist across sessions, append to your shell profile:
+
+```bash
+cat <<'EOF' >> ~/.bashrc
+export HF_HOME=/mnt/raid0/ai-cache/huggingface
+export HF_HUB_CACHE=/mnt/raid0/ai-cache/huggingface/hub
+EOF
+```
+
+Now every `from_pretrained(...)` call, `huggingface-cli download` and
+`transformers` cache lookup lands on the RAID0 array.
+
+---
+
 ## 🧰 Hardware reference (validated)
 
 | Component | Model |
@@ -189,7 +243,15 @@ See **[docs/03-proprietary-blob.md](docs/03-proprietary-blob.md)** for details a
 
 ---
 
-## 🤝 Contributing
+## ⭐ Support / contribute
+
+If this helped you bring AMD RAIDXpert2 / rcraid back to life on a modern
+Linux kernel, please consider:
+
+- ⭐ **Starring** the repo so others can find it
+- 🍴 **Forking** it for your own platform or kernel version
+- 🐛 **Opening an issue** with your motherboard, kernel version and error log
+- 📊 **Sharing benchmark results** from your own NVMe / RAID setup
 
 PRs welcome, especially:
 * Patches for kernels beyond 6.14 (6.15, 6.16, 6.17+)
@@ -197,6 +259,16 @@ PRs welcome, especially:
 * fio profiles for real-world workloads (DuckDB, Parquet, vector DBs, ML model loading)
 
 Open an issue first if you want to discuss scope.
+
+Useful details to include when filing an issue:
+
+```bash
+uname -a
+lsblk -o NAME,SIZE,MODEL,SERIAL,MOUNTPOINTS
+lspci -vv | grep -E 'Non-Volatile|LnkSta|LnkCap'
+dkms status
+dmesg | grep -iE 'rcraid|nvme|iommu|xfs|md0'
+```
 
 ---
 
