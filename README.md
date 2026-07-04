@@ -6,8 +6,6 @@
 
 > Reproducible Linux NVMe RAID0 guide reaching **27.7 GB/s sequential read** from **4× Samsung 990 PRO** drives, with mdadm/XFS tuning, fio benchmarks, and an AMD rcraid DKMS port for Linux 6.14+.
 
-> AMD `rcraid` Linux kernel port (6.14+), DKMS build, NVMe RAID0 setup, mdadm/XFS optimization, and fio benchmarks for high-speed workstation storage.
-
 [![Kernel](https://img.shields.io/badge/kernel-6.14%2B-blue.svg)](https://www.kernel.org/)
 [![License](https://img.shields.io/badge/license-MIT--Patches-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-WRX80%20%7C%20TRX40%20%7C%20X570-lightgrey.svg)](https://www.amd.com/)
@@ -245,7 +243,7 @@ See **[docs/03-proprietary-blob.md](docs/03-proprietary-blob.md)** for details a
 * This project is **not affiliated with AMD**. AMD®, RAIDXpert2™, Threadripper™ are trademarks of Advanced Micro Devices, Inc.
 * The `rcraid` driver source originates from AMD's `raid_linux_driver_930_00276` package. Only our **kernel-compatibility patches and glue scripts** are MIT-licensed — the driver itself remains under AMD's proprietary license.
 * **No warranty.** You can brick your boot process if you follow the rcraid path incorrectly. Always keep a separate boot disk (we used a KIOXIA SSD on the CPU-attached NVMe slot, never touched by RAID).
-* The mdadm path is non-destructive to BIOS RAID metadata if you don't zero the superblocks — but if you do, your BIOS array is gone. Back up first.
+* The mdadm path is non-destructive to BIOS RAID metadata if you don't zero the superblocks — but BIOS RAID metadata behavior may vary, and if you do zero the superblocks, your BIOS array is gone. Back up first before running destructive mdadm setup scripts.
 
 ---
 
