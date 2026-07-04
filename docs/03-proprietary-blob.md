@@ -88,9 +88,11 @@ dkms/rcraid/src/*
 !dkms/rcraid/src/.gitkeep
 vendor/
 *.zip
+*.tar.gz
 *.iso
 *.rpm
 *.deb
+*.7z
 ```
 
 This prevents both AMD source files and AMD binary blobs from being
