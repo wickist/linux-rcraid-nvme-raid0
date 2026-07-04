@@ -88,7 +88,7 @@ by 30–40% — the kernel started flushing too early.
 
 ## fio / application layer — THE big one
 
-This is the knob most people miss. **mdadm dm-stripe serializes across
+This is the knob most people miss. **Linux md/raid0 serializes across
 stripes.** Adding more fio jobs past a certain point does NOT raise
 throughput — it makes latency explode and aggregate bandwidth drops.
 

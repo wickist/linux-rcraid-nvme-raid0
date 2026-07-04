@@ -4,7 +4,7 @@
 #
 # PREREQUISITES:
 #   1. rcblob.x86_64 must be present under dkms/rcraid/src/
-#      (run scripts/fetch-and-extract-rcblob.sh first)
+#      (run scripts/prepare-rcraid-source.sh first)
 #   2. linux-headers-$(uname -r), build-essential, dkms installed
 #
 # USAGE:
@@ -24,7 +24,7 @@ INSTALL_SRC="/usr/src/rcraid-9.3.0-6.14"
 # Sanity checks
 if [ ! -f "${DKMS_SRC}/src/rcblob.x86_64" ]; then
     echo "ERROR: dkms/rcraid/src/rcblob.x86_64 missing."
-    echo "       Run: bash scripts/fetch-and-extract-rcblob.sh vendor/<archive>.zip"
+    echo "       Run: bash scripts/prepare-rcraid-source.sh vendor/<archive>.zip"
     exit 1
 fi
 

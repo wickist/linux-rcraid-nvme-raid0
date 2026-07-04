@@ -55,8 +55,24 @@ for d in "${DEVS[@]}"; do
 done
 
 ND=${#DEVS[@]}
-echo "==> Creating mdadm RAID0 across $ND devices:"
-printf '   %s\n' "${DEVS[@]}"
+echo "==> About to create mdadm RAID0 across $ND devices:"
+echo ""
+echo "Device details:"
+lsblk -o NAME,SIZE,MODEL,SERIAL,MOUNTPOINTS "${DEVS[@]}" 2>/dev/null || \
+    lsblk -o NAME,SIZE,MODEL "${DEVS[@]}" 2>/dev/null
+echo ""
+
+# Destructive confirmation: typing YES is required.
+# Bypass with CONFIRM_DESTROY=YES for non-interactive runs.
+if [ "${CONFIRM_DESTROY:-}" != "YES" ]; then
+    read -r -p "WARNING: This will DESTROY all data on: ${DEVS[*]}. Type YES to continue: " ans
+    if [ "$ans" != "YES" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
+
+echo "==> Proceeding."
 echo "==> Chunk size: ${CHUNK}K"
 
 # Zero out any existing md/BIOS RAID metadata on member devices

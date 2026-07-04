@@ -1,28 +1,31 @@
-# 03 — Proprietary AMD binary blob
+# 03 — Proprietary AMD source and binary blob
 
-## Why this repository does not redistribute the blob
+## Why this repository does not redistribute AMD's files
 
-The AMD RAID driver consists of two layers:
+The AMD RAID driver consists of two layers, **both owned by AMD** and
+governed by AMD's End User License Agreement ([AMD EULA]):
 
-1. **Open glue source** (`rc_init.c`, `rc_msg.c`, headers, Makefile) —
-   provided by AMD inside the `raid_linux_driver_930_00276` SDK.
+1. **Driver glue source** (`rc_init.c`, `rc_msg.c`, headers, `Makefile`,
+   `common_shell`) — provided by AMD inside the
+   `raid_linux_driver_930_00276` SDK.
 2. **Closed binary object** `rcblob.x86_64` (~10.5 MB) — also provided
    by AMD inside the same SDK, linked as a prebuilt object.
 
-Both are governed by AMD's End User License Agreement ([AMD EULA]).
-Redistributing AMD's binary components from a third-party GitHub repo
-would violate that EULA and risk a takedown.
+Redistributing **either** of those from a third-party GitHub repo would
+violate AMD's EULA and risk a takedown notice.
 
 This repository therefore ships:
 
-* ✅ Our own **patches** (MIT-licensed).
-* ✅ Our **DKMS configuration** and build glue.
-* ✅ Our **setup / extract / verify** scripts.
-* ✅ Our **fio profiles and tuning scripts**.
+* ✅ Our own **unified diff patch** against AMD 9.3.0 (`patches/kernel-6.14/`).
+* ✅ Our **DKMS configuration** and post-install hooks.
+* ✅ Our **source preparation, verification, tuning, benchmark scripts**.
+* ✅ Our **fio profiles**.
+* ✅ A SHA-256 manifest for verifying the extracted blob.
+* ❌ **NOT** any of AMD's `*.c` / `*.h` source files.
 * ❌ **NOT** `rcblob.x86_64`.
 * ❌ **NOT** any repackaged AMD installer / zip / deb / rpm.
 
-## How to obtain the blob
+## How to obtain AMD's driver package
 
 End users download the AMD RAID driver directly from AMD's official page:
 
@@ -31,7 +34,13 @@ End users download the AMD RAID driver directly from AMD's official page:
 Look for the **Linux x86 64-bit Driver** section and grab
 `raid_linux_driver_930_00276.zip`. Save it under `vendor/` in your clone.
 
-## Extraction workflow
+## Source preparation workflow
+
+`scripts/prepare-rcraid-source.sh` does everything in one shot:
+
+1. Extracts **all** AMD source files (`.c`, `.h`, `Makefile`,
+   `common_shell`) plus the `rcblob.x86_64` blob into `dkms/rcraid/src/`.
+2. Applies our `patches/kernel-6.14/rcraid-6.14-combined.patch` on top.
 
 ```bash
 # 1. Clone and enter the repo
@@ -42,22 +51,21 @@ cd linux-rcraid-nvme-raid0
 mkdir -p vendor
 cp ~/Downloads/raid_linux_driver_930_00276.zip vendor/
 
-# 3. Extract the blob
-bash scripts/fetch-and-extract-rcblob.sh vendor/raid_linux_driver_930_00276.zip
-#    → installs dkms/rcraid/src/rcblob.x86_64
+# 3. Extract AMD source + apply the kernel-6.14 patch
+bash scripts/prepare-rcraid-source.sh vendor/raid_linux_driver_930_00276.zip
+#    → fills dkms/rcraid/src/ with patched AMD source + blob
 
-# 4. Verify integrity
+# 4. Verify blob integrity
 bash scripts/verify-blob.sh
 #    → compares SHA-256 against checksums/amd-raid-9.3.0.sha256
 ```
 
-The `fetch-and-extract-rcblob.sh` script:
+The script:
 
 * Accepts either an explicit zip path or auto-detects a
   `raid_linux_driver_*.zip` inside `vendor/`.
-* Extracts just `rcblob.x86_64` (no other files), so we don't drag in
-  any more AMD content than strictly necessary.
-* Refuses to continue if the blob is not found inside the archive.
+* Refuses to continue if the AMD source tree or the blob is missing.
+* Applies the patch with `patch -p1` (falls back to `-p0` if needed).
 
 ## Integrity check
 

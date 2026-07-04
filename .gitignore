@@ -1,7 +1,8 @@
-# AMD proprietary binary blob — NEVER commit
-dkms/rcraid/src/rcblob.x86_64
-dkms/rcraid/src/rcblob.x86_64.o
-dkms/rcraid/src/.rcblob.x86_64.o.cmd
+# AMD proprietary source files and binary blob — NEVER commit.
+# These are populated by scripts/prepare-rcraid-source.sh from AMD's
+# official driver archive and remain governed by AMD's EULA.
+dkms/rcraid/src/*
+!dkms/rcraid/src/.gitkeep
 vendor/
 results/raw-logs/
 

@@ -14,7 +14,7 @@ MANIFEST="${REPO_ROOT}/checksums/amd-raid-9.3.0.sha256"
 
 if [ ! -f "$BLOB" ]; then
     echo "ERROR: blob not found: $BLOB"
-    echo "       Run scripts/fetch-and-extract-rcblob.sh first."
+    echo "       Run scripts/prepare-rcraid-source.sh first."
     exit 1
 fi
 

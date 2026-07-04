@@ -130,12 +130,15 @@ done
 
 ## What about BIOS RAID metadata?
 
-The `mdadm --zero-superblock` step **does NOT remove** AMD's BIOS RAID
-metadata — that lives in a different on-disk format that `mdadm` does
-not touch. If you ever want to wipe BIOS RAID too, you need to enter the
-motherboard's RAID BIOS and delete the array there, or use `dmraid`.
+`mdadm --zero-superblock` targets Linux md metadata. `wipefs -a` removes
+filesystem and other well-known signatures. **AMD BIOS RAID metadata
+behavior may vary** — on some firmware versions `wipefs` will spot and
+erase the AMD signature, on others it won't. If you need to preserve
+BIOS RAID for dual-boot, **do not run the destructive mdadm setup script
+without a full backup**, and verify in your motherboard's RAID utility
+afterward.
 
-This is intentional: if you ever want to flip back to BIOS RAID, the
-metadata is still intact.
+To definitively remove BIOS RAID metadata, use `dmraid -r -E` or delete
+the array from the motherboard's RAID BIOS.
 
 Continue with [05-xfs-optimization.md](05-xfs-optimization.md).

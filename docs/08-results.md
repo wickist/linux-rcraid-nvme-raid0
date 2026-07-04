@@ -48,10 +48,12 @@ hardware.
 | rcraid DKMS port | 16.6 GB/s | 16.7 GB/s | 152K IOPS |
 
 The mdadm path reaches **94% of the raw hardware ceiling** on read and
-write. The 5.8 GB/s mdadm overhead on read is the dm-stripe target's
-coordination cost — confirmed by `/dev/md0` raw reads at 23.3 GB/s
-versus file reads at 27.7 GB/s (the difference being XFS allocation
-behavior at different block sizes).
+write. Initial aggressive profiles (high numjobs / iodepth) capped
+mdadm/XFS reads around 19.7 GB/s. After the sweep, the optimal profile
+(numjobs=4, iodepth=64, bs=1M, libaio) reached **27.7 GB/s**, close to
+the 29.5 GB/s raw hardware ceiling. Earlier 23.3 GB/s `/dev/md0` raw
+results came from a non-optimal profile and should not be treated as
+the final mdadm ceiling.
 
 The rcraid path is roughly **half** of mdadm. It's the right choice
 only if you need BIOS-visible RAID (typically for Windows dual-boot).

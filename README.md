@@ -68,13 +68,16 @@ linux-rcraid-nvme-raid0/
 ├── README.md                       ← you are here
 ├── LICENSE                         ← MIT (covers patches/scripts only)
 ├── .gitignore
-├── dkms/rcraid/                    ← ready-to-build DKMS source tree
+├── dkms/rcraid/                    ← DKMS package (NO AMD source committed)
 │   ├── dkms.conf
-│   ├── src/                        ← patched AMD 9.3.0 sources
+│   ├── src/                        ← empty by default — populated by
+│   │                                 prepare-rcraid-source.sh from AMD's zip
 │   └── post_install / post_remove
-├── patches/kernel-6.14/            ← individual patch files + CHANGELOG
-├── scripts/                        ← setup, blob extraction, tuning
-│   ├── fetch-and-extract-rcblob.sh
+├── patches/kernel-6.14/            ← our compatibility patch + change log
+│   ├── rcraid-6.14-combined.patch  ← unified diff against AMD 9.3.0
+│   └── CHANGELOG.md
+├── scripts/                        ← setup, source preparation, tuning
+│   ├── prepare-rcraid-source.sh    ← extracts AMD src + applies our patch
 │   ├── verify-blob.sh
 │   ├── install-rcraid-dkms.sh
 │   ├── setup-mdadm-raid0.sh
@@ -94,6 +97,8 @@ linux-rcraid-nvme-raid0/
 │   ├── 06-benchmarks.md
 │   ├── 07-troubleshooting.md
 │   └── 08-results.md
+├── checksums/
+│   └── amd-raid-9.3.0.sha256       ← SHA-256 manifest for the AMD blob
 └── results/
     ├── fio-summary.md
     └── hardware-topology.md
@@ -129,13 +134,14 @@ cd linux-rcraid-nvme-raid0
 
 # 1. Download AMD RAID driver from AMD.com, place the archive in vendor/
 #    https://www.amd.com/en/support/downloads/drivers.html/chipsets/swrx8/wrx80.html
+mkdir -p vendor
 cp ~/Downloads/raid_linux_driver_930_00276.zip vendor/
 
-# 2. Extract the proprietary blob into dkms/rcraid/src/
-bash scripts/fetch-and-extract-rcblob.sh vendor/raid_linux_driver_930_00276.zip
+# 2. Extract AMD source into dkms/rcraid/src/ AND apply the kernel-6.14 patch
+bash scripts/prepare-rcraid-source.sh vendor/raid_linux_driver_930_00276.zip
 
 # 3. Verify blob integrity
-bash scripts/verify-blob.sh dkms/rcraid/src/rcblob.x86_64
+bash scripts/verify-blob.sh
 
 # 4. Install as DKMS (auto-rebuilds on kernel updates)
 sudo bash scripts/install-rcraid-dkms.sh
@@ -145,13 +151,15 @@ See **[docs/02-rcraid-kernel-port.md](docs/02-rcraid-kernel-port.md)** for the f
 
 ---
 
-## 🔐 Proprietary AMD binary blob
+## 🔐 Proprietary AMD source and binary blob
 
-**This repository does NOT redistribute AMD proprietary binaries.**
+**This repository does NOT redistribute AMD proprietary source files or binary blobs.**
 
-The `rcblob.x86_64` file (a 10.5 MB prebuilt closed-source object inside the AMD RAID driver) is **owned by AMD** and is subject to AMD's End User License Agreement. We cannot host it here.
+Both the AMD-owned driver source (`dkms/rcraid/src/*.c`, `*.h`, `Makefile`, `common_shell`) and the `rcblob.x86_64` binary (a 10.5 MB prebuilt closed-source object inside the AMD RAID driver) are **owned by AMD** and are subject to AMD's End User License Agreement. We cannot host them here.
 
-Users must obtain it themselves from AMD's official download page and run the provided `fetch-and-extract-rcblob.sh` script to place it at `dkms/rcraid/src/rcblob.x86_64` before building.
+Users must obtain the AMD RAID driver package themselves from AMD's official download page and run the provided `prepare-rcraid-source.sh` script. That script:
+1. Extracts AMD's source files + binary blob into `dkms/rcraid/src/`
+2. Applies our kernel-6.14 compatibility patch on top
 
 See **[docs/03-proprietary-blob.md](docs/03-proprietary-blob.md)** for details and SHA-256 verification.
 
@@ -162,7 +170,7 @@ See **[docs/03-proprietary-blob.md](docs/03-proprietary-blob.md)** for details a
 | Doc | What it covers |
 |---|---|
 | [01-problem.md](docs/01-problem.md) | Why AMD's stock driver fails on modern kernels |
-| [02-rcraid-kernel-port.md](docs/02-rcraid-kernel-port.md) | The 14 kernel API changes we patched |
+| [02-rcraid-kernel-port.md](docs/02-rcraid-kernel-port.md) | The 18 kernel API changes we patched |
 | [03-proprietary-blob.md](docs/03-proprietary-blob.md) | `rcblob.x86_64` handling, license, verification |
 | [04-mdadm-raid0-setup.md](docs/04-mdadm-raid0-setup.md) | Higher-throughput software RAID alternative |
 | [05-xfs-optimization.md](docs/05-xfs-optimization.md) | XFS stripe geometry, mount options, queue tuning |

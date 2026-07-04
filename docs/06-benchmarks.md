@@ -33,7 +33,7 @@ numjobs=4, iodepth=64, runtime=30, time_based
 ```
 
 This is the **maximum throughput profile**. Do not raise `numjobs` or
-`iodepth` beyond these values — mdadm's dm-stripe serializes across
+`iodepth` beyond these values — Linux md/raid0 serializes across
 stripes, and beyond ~4×64 the latency grows faster than throughput.
 
 ### Optimal sequential write — `fio/write-optimal.fio`
@@ -113,13 +113,13 @@ These are the variables that explain a benchmark result. Without them,
 
 Counter-intuitive but real. Possible causes:
 
-* mdadm stripe read coordination overhead (~30% in our measurements).
+* Linux md/raid0 read coordination overhead (~30% in our measurements).
 * SLC cache absorbing writes faster than TLC reads can stream.
 * PCIe ASPM throttling under sustained read.
 
 The fix isn't to chase the write number — it's to verify against the
 raw 4-NVMe profile. If raw is also low, it's hardware. If raw is fine
-but mdadm is low, it's the dm-stripe layer.
+but mdadm is low, it's the md/raid0 layer.
 
 ### "Bigger block size always wins"
 

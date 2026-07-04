@@ -1,0 +1,512 @@
+# rcraid 9.3.0 -> Linux 6.14 compatibility patch
+# Applies on top of AMD's raid_linux_driver_930_00276 source tree.
+# See patches/kernel-6.14/CHANGELOG.md for the per-symbol rationale.
+
+--- Makefile	2026-07-04 12:28:16.529025410 +0300
++++ Makefile	2026-07-04 03:47:00.777396322 +0300
+@@ -96,8 +96,13 @@
+ # Sign the module using the local certificate.
+ #
+ 
+-all: bbanner
++all: bbanner rcblob_pre
+ 	$(MAKE) -C $(KDIR) M=$(shell pwd) modules
++
++# Pre-build step: ensure rcblob symlink exists (DKMS does not run `clean` first)
++rcblob_pre:
++	@ln -sf rcblob.$(PLATFORM) rcblob.$(PLATFORM).o
++	@echo "$(PLATFORM) := 1" > .rcblob.$(PLATFORM).o.cmd
+ #ifeq ($(shell /bin/mokutil --sb-state | cut -f2 -d\ ), enabled)
+ #ifneq ($(shell id -u), 0)
+ #	@echo "#"
+@@ -125,8 +130,9 @@
+ #endif
+ #endif
+ #endif
+-	@echo "Signing module using local certificate"
+-	@$(PWD)/../mk_certs $(SIGN_TOOL) $(PWD)/rcraid.ko $(RCCERT) $(KVERS)
++# Signing disabled - Secure Boot is off (amd_iommu=off setup)
++#	@echo "Signing module using local certificate"
++#	@$(PWD)/../mk_certs $(SIGN_TOOL) $(PWD)/rcraid.ko $(RCCERT) $(KVERS)
+ 
+ 
+ sign:	rcraid.ko
+@@ -156,8 +162,9 @@
+ #	@echo "#"
+ #endif
+ #endif
+-	@echo "Signing module using local certificate"
+-	@$(PWD)/../mk_certs $(SIGN_TOOL) $(PWD)/rcraid.ko $(RCCERT) $(KVERS)
++# Signing disabled - Secure Boot is off (amd_iommu=off setup)
++#	@echo "Signing module using local certificate"
++#	@$(PWD)/../mk_certs $(SIGN_TOOL) $(PWD)/rcraid.ko $(RCCERT) $(KVERS)
+ 
+ clean:
+ 	@rm -f *.o *.ko vers.c .*.cmd .*.d 
+
+--- rc_config.c	2026-07-04 12:28:16.544781745 +0300
++++ rc_config.c	2026-07-04 02:23:42.154191933 +0300
+@@ -9,7 +9,6 @@
+ #include <linux/module.h>
+ #include <linux/fs.h>
+ #include <linux/miscdevice.h>
+-#include <linux/genhd.h>
+ #include <linux/sched.h>
+ #include <linux/completion.h>
+ 
+
+--- rc_init.c	2026-07-04 12:28:16.544903946 +0300
++++ rc_init.c	2026-07-04 02:47:51.549195514 +0300
+@@ -191,11 +191,21 @@
+ #else
+ void	    rc_timeout_done(struct timer_list *t);
+ #endif
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
+ static int  rc_slave_cfg(struct scsi_device *sdev);
++#else
++static int  rc_slave_cfg(struct scsi_device *sdev, struct queue_limits *qlim);
++#endif
+ int         rc_bios_params(struct scsi_device *sdev, struct block_device *bdev,
+ 			   sector_t capacity, int geom[]);
+ 
+-int         rc_queue_cmd_lck(struct scsi_cmnd * scp, void (*CompletionRoutine) (struct scsi_cmnd *));
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
++int         rc_queue_cmd (struct scsi_cmnd * scp, void (*CompletionRoutine) (struct scsi_cmnd *));
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++int         rc_queue_cmd_lck(struct scsi_cmnd * scp);
++#else
++int         rc_queue_cmd_lck (struct scsi_cmnd * scp, void (*CompletionRoutine) (struct scsi_cmnd *));
++#endif
+ 			 
+ #ifdef RC_AHCI_SUPPORT
+ // Additions for AHCI driver
+@@ -335,9 +345,11 @@
+ 	.module =                  THIS_MODULE,
+ 	.name =                    RC_DRIVER_NAME,
+ 	.proc_name =               RC_DRIVER_NAME,
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
+ 	.proc_dir =                NULL,
++#endif
+ 	.info =                    rc_info,
+-	.ioctl =                   rc_ioctl,    
++	.ioctl =                   rc_ioctl,
+ 	.queuecommand =            rc_queue_cmd,
+ 	.bios_param =              rc_bios_params,
+ 	.can_queue =               1,
+@@ -350,9 +362,12 @@
+ 	.eh_host_reset_handler =   rc_eh_hba_reset,
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
+ 	.use_clustering =          ENABLE_CLUSTERING,
+-#else
+-#endif	/* (5,0,0) */
++#endif
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
+ 	.slave_configure =         rc_slave_cfg,
++#else
++	.sdev_configure =          rc_slave_cfg,
++#endif
+ };
+ 
+ //
+@@ -606,6 +621,7 @@
+ 	/*
+ 	 * set dma_mask to 64 bit capabilities but if that fails, try 32 bit
+ 	 */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)
+ 	if (!pci_set_dma_mask(dev, DMA_BIT_MASK(64)) &&
+ 	    !pci_set_consistent_dma_mask(dev, DMA_BIT_MASK(64))) {
+ 		rc_printk(RC_NOTE, RC_DRIVER_NAME ": %s 64 bit DMA enabled\n",
+@@ -616,10 +632,26 @@
+ 			  __FUNCTION__);
+ 	} else {
+ 		rc_printk(RC_ERROR, RC_DRIVER_NAME ": %s failed to "
+-			  "set usable DMA mask\n", __FUNCTION__);
++			"set usable DMA mask\n", __FUNCTION__);
++		rc_shutdown_adapter(adapter);
++		return -ENODEV;
++	}
++#else
++	if (!dma_set_mask(&dev->dev, DMA_BIT_MASK(64)) &&
++	    !dma_set_coherent_mask(&dev->dev, DMA_BIT_MASK(64))) {
++		rc_printk(RC_NOTE, RC_DRIVER_NAME ": %s 64 bit DMA enabled\n",
++			  __FUNCTION__);
++	} else if (!dma_set_mask(&dev->dev, DMA_BIT_MASK(32)) &&
++		   !dma_set_coherent_mask(&dev->dev, DMA_BIT_MASK(32))) {
++		rc_printk(RC_NOTE, RC_DRIVER_NAME ": %s 64 bit DMA disabled\n",
++			  __FUNCTION__);
++	} else {
++		rc_printk(RC_ERROR, RC_DRIVER_NAME ": %s failed to "
++			"set usable DMA mask\n", __FUNCTION__);
+ 		rc_shutdown_adapter(adapter);
+ 		return -ENODEV;
+ 	}
++#endif
+ 
+ 	/*
+ 	 * map in the adapter MMIO space
+@@ -890,7 +922,9 @@
+ 	host_ptr->unique_id = 0;
+ 	host_ptr->this_id = -1;  /* SCSI Id for the adapter itself */
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
+ 	driver_template.present = 1;    /* one virtual adapter */
++#endif
+ 
+ 	error = scsi_add_host(host_ptr, &pdev->dev);
+ 
+@@ -1052,10 +1086,17 @@
+ 	rc_printk(RC_DEBUG, "%s: free private_mem 0x%px\n",
+ 		  __FUNCTION__, adapter->private_mem.vaddr);
+ 	if (adapter->private_mem.vaddr)  {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
+ 		pci_free_consistent(adapter->pdev,
+ 				    rc_state.memsize_per_controller,
+ 				    adapter->private_mem.vaddr,
+ 				    adapter->private_mem.dma_address);
++#else
++		dma_free_coherent(&adapter->pdev->dev,
++				    rc_state.memsize_per_controller,
++				    adapter->private_mem.vaddr,
++				    adapter->private_mem.dma_address);
++#endif
+ 	}
+ 
+ 	/* pci_disable_device(adapter->pdev); */
+@@ -1499,9 +1540,17 @@
+  */
+ 
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
++int rc_queue_cmd (struct scsi_cmnd * scp, void (*CompletionRoutine) (struct scsi_cmnd *))
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++int rc_queue_cmd_lck(struct scsi_cmnd * scp)
++#else
+ int rc_queue_cmd_lck (struct scsi_cmnd * scp, void (*CompletionRoutine) (struct scsi_cmnd *))
++#endif
+ {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,16,0)
+ 	scp->scsi_done = CompletionRoutine;
++#endif
+ 	//#define FAIL_ALL_IO 0
+ 
+ #ifdef FAIL_ALL_IO
+@@ -1537,13 +1586,21 @@
+ 		  scp, scp->device->channel, scp->device->id);
+ 	// rc_config_debug = 1;
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0))
+ 	srb = (rc_srb_t *)scp->SCp.ptr;
++#else
++	srb = (rc_srb_t *)scp->host_scribble;
++#endif
+ 	if (srb != NULL) {
+ 		rc_printk(RC_DEBUG, "\tsrb: 0x%px seq_num %d function %x status %x "
+ 			  "flags %x b/t/l %d/%d/%d\n", srb, srb->seq_num, srb->function,
+ 			  srb->status, srb->flags, srb->bus, srb->target, srb->lun);
+ 		srb->scsi_context = NULL;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0))
+ 		scp->SCp.ptr = NULL;
++#else
++		scp->host_scribble = NULL;
++#endif
+ 	} else {
+ 		rc_printk(RC_WARN, "rc_eh_abort_cmd: srb already completed\n");
+ 		// most likely here because we already processed srb
+@@ -2158,7 +2215,11 @@
+  *  A queue depth of one automatically disables tagged queueing.
+  */
+ static int
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++rc_slave_cfg(struct scsi_device *sdev, struct queue_limits *qlim)
++#else
+ rc_slave_cfg(struct scsi_device *sdev)
++#endif
+ {
+     rc_send_arg_t   args;
+     rc_softstate_t    *state;
+@@ -2196,8 +2257,12 @@
+         // that's using Block I/O parameter to do bypass I/O.
+         //
+         // Set max sectors per transfer to 256 for ATAPI devices.
++        // NOTE: blk_queue_max_hw_sectors() was removed in 6.14; the
++        // host template's .max_sectors field caps this for us now.
+         //
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
+         blk_queue_max_hw_sectors(sdev->request_queue, 256);
++#endif
+     }
+ 
+ 	return 0;
+@@ -2515,6 +2580,7 @@
+ 	{ }
+ };
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+ static struct ctl_table rcraid_dir_table[] = {
+ 	{ .procname	= "rcraid",
+ 	  .mode		= 0555,
+@@ -2551,6 +2617,7 @@
+ #endif  /* 0 */
+ 	{ }
+ };
++#endif  /* LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0) */
+ 
+ static struct ctl_table_header *rcraid_sysctl_hdr;
+ 
+@@ -2577,9 +2644,23 @@
+     //
+     memset(version_string, 0, VERSION_STRING_LEN);
+     snprintf(version_string, VERSION_STRING_LEN, "V%s %s", RC_DRIVER_VERSION, RC_BUILD_NUMBER);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++    /* Modern sysctl API: register_sysctl(path, table). The path encodes the
++     * full hierarchy; the legacy .child wrapper tables are no longer needed.
++     * NOTE: these knobs (dipm/hipm/ncq/zpodd) are SATA power-management
++     * tunables and are NOT required for NVMe RAID operation. We treat sysctl
++     * registration as best-effort on modern kernels: if the kernel rejects
++     * the table (e.g. sentinel strictness), we log and continue rather than
++     * tearing down the whole RAID driver. */
++	rcraid_sysctl_hdr = register_sysctl("dev/scsi/rcraid", rcraid_table);
++#else
+ 	rcraid_sysctl_hdr = register_sysctl_table(rcraid_root_table);
+-	if (rcraid_sysctl_hdr == NULL)
+-		return -ENOMEM;
++#endif
++	if (rcraid_sysctl_hdr == NULL) {
++		rc_printk(RC_WARN, RC_DRIVER_NAME ": sysctl registration failed "
++			  "(non-fatal for NVMe RAID); continuing without /proc/sys/dev/scsi/rcraid\n");
++		rcraid_sysctl_hdr = NULL;
++	}
+ 
+     // Allow sr_mod.ko to present any SR devices before exiting.
+     // Addresses timing window with linuxrc installer.
+@@ -2617,7 +2698,8 @@
+ 
+     pci_unregister_driver(&rcraid_pci_driver);
+ 
+-    unregister_sysctl_table(rcraid_sysctl_hdr);
++    if (rcraid_sysctl_hdr)
++	unregister_sysctl_table(rcraid_sysctl_hdr);
+ 
+     rc_remove_proc();
+ }
+
+--- rc_msg.c	2026-07-04 12:28:16.545046806 +0300
++++ rc_msg.c	2026-07-04 02:22:59.396403339 +0300
+@@ -82,9 +82,17 @@
+ 
+ int rc_srb_seq_num = 0;
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++static void rc_sysrq_intr (u8 key);
++#else
+ static void rc_sysrq_intr (int key);
++#endif
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++static void rc_sysrq_state (u8 key);
++#else
+ static void rc_sysrq_state (int key);
++#endif
+ 
+ struct sysrq_key_op rc_skey_ops_intr = {
+ handler:    rc_sysrq_intr,
+@@ -1153,9 +1161,15 @@
+ 		if (adapter == (rc_adapter_t *)0) {
+ 			rc_printk(RC_ERROR, "rc_msg_init null adapter\n");
+ 		}
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
+ 		addr = pci_alloc_consistent(adapter->pdev,
+ 					    state->memsize_per_controller,
+ 					    &adapter->private_mem.dma_address);
++#else
++		addr = dma_alloc_coherent(&adapter->pdev->dev,
++					    state->memsize_per_controller,
++					    &adapter->private_mem.dma_address, GFP_KERNEL);
++#endif
+ 
+ 		if (addr == (void *)0) {
+ 			rc_printk(RC_ERROR,"rc_msg_init: can not alloc %d bytes of per "
+@@ -1472,7 +1486,11 @@
+ 		rc_printk(RC_ERROR, "rc_msg_send_srb:  scatter-gather list too large "
+ 			  "(%d)\n", scsi_sg_count(scp));
+  		scp->result = DID_NO_CONNECT << 16;
+- 		scp->scsi_done(scp);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++ 		scsi_done(scp);
++#else
++		scp->scsi_done(scp);
++#endif
+ 		return 0;
+ 	}
+ 
+@@ -1518,13 +1536,21 @@
+ 	srb->scsi_context = scp;
+ 	srb->sg_list      = (rc_sg_list_t *)&srb->private32[0];
+ 	srb->dev_private  = (char *)srb->sg_list + sg_list_size;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0)
++	srb->timeout      = scsi_cmd_to_rq(scp)->timeout/HZ;
++#else
+ 	srb->timeout      = scp->request->timeout/HZ;
++#endif
+ 	srb->seq_num      = rc_srb_seq_num++;
+ 
+ 	/* the scsi_cmnd pointer points at our srb, at least until the command is
+ 	 * aborted
+ 	 */
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0))
+ 	scp->SCp.ptr = (void *)srb;
++#else
++	scp->host_scribble = (void *)srb;
++#endif
+ 
+ 	rc_msg_build_sg(srb);
+ 
+@@ -1915,12 +1941,16 @@
+ 		return;
+ 	}
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0))
+ 	scp->SCp.ptr = NULL;
++#else
++	scp->host_scribble = NULL;
++#endif
+ 
+ 	if (srb->status == RC_SRB_STATUS_SUCCESS) {
+ 		 //rc_printk(RC_DEBUG2, "%s: seq_num %d SUCCESS\n", __FUNCTION__,
+ 		 //          srb->seq_num);
+-		scp->result = DID_OK << 16 | COMMAND_COMPLETE << 8 | GOOD;
++		scp->result = DID_OK << 16 | 0 << 8 | SAM_STAT_GOOD;
+ 
+         // SWDEV-253195/SWDEV-253204
+         // Core is returning SUCCESS even when sense data is present.
+@@ -1931,7 +1961,11 @@
+         if (((unsigned char *) srb->sense)[0] != 0)     // sense data returned
+             scp->result = SAM_STAT_CHECK_CONDITION;
+ 		GET_IO_REQUEST_LOCK_IRQSAVE(irql);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++ 		scsi_done(scp);
++#else
+ 		scp->scsi_done(scp);
++#endif
+ 		PUT_IO_REQUEST_LOCK_IRQRESTORE(irql);
+ 		srb->seq_num = -1;
+ 		kfree(srb);
+@@ -1950,7 +1984,11 @@
+ 			  srb->seq_num);
+ 		scp->result = DID_BAD_TARGET << 16;
+ 		GET_IO_REQUEST_LOCK_IRQSAVE(irql);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++ 		scsi_done(scp);
++#else
+ 		scp->scsi_done(scp);
++#endif
+ 		PUT_IO_REQUEST_LOCK_IRQRESTORE(irql);
+ 		srb->seq_num = -1;
+ 		kfree(srb);
+@@ -1968,7 +2006,7 @@
+ 	 */
+ 	rc_dump_scp(scp);
+ 
+-	scp->result = DID_OK << 16 | COMMAND_COMPLETE << 8 | CHECK_CONDITION;
++	scp->result = DID_OK << 16 | 0 << 8 | SAM_STAT_CHECK_CONDITION;
+ 
+ 	if (! (srb->flags & RC_SRB_FLAGS_SENSEVALID)) {
+ 		if (srb->status == RC_SRB_STATUS_INVALID_REQUEST) {
+@@ -1987,7 +2025,11 @@
+ 	}
+ 
+ 	GET_IO_REQUEST_LOCK_IRQSAVE(irql);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,16,0)
++ 	scsi_done(scp);
++#else
+ 	scp->scsi_done (scp);
++#endif
+ 	PUT_IO_REQUEST_LOCK_IRQRESTORE(irql);
+ 	srb->seq_num = -1;
+ 	kfree(srb);
+@@ -2231,7 +2273,11 @@
+     dmaHandle = (dma_addr_t*) &dma_address->dmaHandle;
+ 
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
+     dma_address->cpu_addr = pci_alloc_consistent(adapter->pdev,dma_address->bytes, dmaHandle );
++#else
++    dma_address->cpu_addr = dma_alloc_coherent(&adapter->pdev->dev, dma_address->bytes, dmaHandle, GFP_KERNEL);
++#endif
+ 
+     if (dma_address->cpu_addr)
+     {
+@@ -2242,7 +2288,11 @@
+ void
+ rc_msg_free_dma_memory(rc_adapter_t	*adapter, void *cpu_addr, dma_addr_t dmaHandle, rc_uint32_t bytes)
+ {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
+     pci_free_consistent(adapter->pdev, bytes, cpu_addr, dmaHandle);
++#else
++    dma_free_coherent(&adapter->pdev->dev, bytes, cpu_addr, dmaHandle);
++#endif
+ }
+ 
+ void 
+@@ -2331,7 +2381,11 @@
+ 			if (len < len_mapped)
+ 				len_mapped = len;    
+                 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
+ 			map->physical_address = dma_map_page(&adapter->pdev->dev, page, offset, len_mapped, PCI_DMA_BIDIRECTIONAL);
++#else
++			map->physical_address = dma_map_page(&adapter->pdev->dev, page, offset, len_mapped, DMA_BIDIRECTIONAL);
++#endif
+             if (dma_mapping_error(&adapter->pdev->dev, map->physical_address))
+             {
+                 map->number_bytes = 0;
+@@ -2342,7 +2396,11 @@
+     } else if ((map->memory_id & MEM_TYPE) == RC_MEM_DMA) {
+         vaddr = (void *)(rc_uint_ptr_t)map->address;
+         
+-        map->physical_address = dma_map_single(&adapter->pdev->dev, vaddr, map->number_bytes, PCI_DMA_BIDIRECTIONAL); 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
++        map->physical_address = dma_map_single(&adapter->pdev->dev, vaddr, map->number_bytes, PCI_DMA_BIDIRECTIONAL);
++#else
++        map->physical_address = dma_map_single(&adapter->pdev->dev, vaddr, map->number_bytes, DMA_BIDIRECTIONAL);
++#endif
+         if (dma_mapping_error(&adapter->pdev->dev, map->physical_address))
+         {
+             map->number_bytes = 0;
+@@ -2610,7 +2668,11 @@
+ 	return(cnt);
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++static void rc_sysrq_intr (u8 key)
++#else
+ static void rc_sysrq_intr (int key)
++#endif
+ {
+ 	rc_softstate_t *state;
+ 
+@@ -2627,7 +2689,11 @@
+ 	rc_printk(RC_ALERT, "scheduling tasklet interrupt\n");
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++static void rc_sysrq_state (u8 key)
++#else
+ static void rc_sysrq_state (int key)
++#endif
+ {
+ 
+ 	rc_msg_stats(rc_stats_buf, sizeof(rc_stats_buf));
+
+--- rc_msg_platform.h	2026-07-04 12:28:16.545131095 +0300
++++ rc_msg_platform.h	2026-07-04 01:23:38.993515947 +0300
+@@ -28,7 +28,7 @@
+ #define RC_STHEXT_REDO_STRICT_TYPES
+ #endif //int
+ 
+-#include <stdarg.h>
++#include <linux/stdarg.h>
+ 
+ #ifdef RC_STHEXT_REDO_STRICT_TYPES
+ #define int Cannot_USE_int_because_it_is_ambiguous
+
