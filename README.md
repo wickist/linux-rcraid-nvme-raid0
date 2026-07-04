@@ -1,5 +1,11 @@
 # linux-rcraid-nvme-raid0
 
+<p align="center">
+  <img src="docs/assets/nvme-raid0-27gbps-social-preview.png" width="900" alt="27.7 GB/s NVMe RAID0 on Linux with 4× Samsung 990 PRO, mdadm RAID0 and XFS">
+</p>
+
+> Reproducible Linux NVMe RAID0 guide reaching **27.7 GB/s sequential read** from **4× Samsung 990 PRO** drives, with mdadm/XFS tuning, fio benchmarks, and an AMD rcraid DKMS port for Linux 6.14+.
+
 > AMD `rcraid` Linux kernel port (6.14+), DKMS build, NVMe RAID0 setup, mdadm/XFS optimization, and fio benchmarks for high-speed workstation storage.
 
 [![Kernel](https://img.shields.io/badge/kernel-6.14%2B-blue.svg)](https://www.kernel.org/)
