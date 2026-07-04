@@ -44,7 +44,7 @@ Look for the **Linux x86 64-bit Driver** section and grab
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/<owner>/linux-rcraid-nvme-raid0.git
+git clone https://github.com/wickist/linux-rcraid-nvme-raid0.git
 cd linux-rcraid-nvme-raid0
 
 # 2. Drop the AMD archive into vendor/
@@ -83,8 +83,9 @@ is not guaranteed to match the glue source.
 
 ## What `.gitignore` protects
 
-```
-dkms/rcraid/src/rcblob.x86_64
+```text
+dkms/rcraid/src/*
+!dkms/rcraid/src/.gitkeep
 vendor/
 *.zip
 *.iso
@@ -92,9 +93,10 @@ vendor/
 *.deb
 ```
 
-Even if you accidentally drop the AMD archive into a tracked location,
-`git add` will refuse to stage it. Double-check with `git status` before
-committing if you're unsure.
+This prevents both AMD source files and AMD binary blobs from being
+committed. Even if you accidentally drop the AMD archive into a tracked
+location, `git add` will refuse to stage it. Double-check with
+`git status` before committing if you're unsure.
 
 ## License reminder
 

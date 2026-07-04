@@ -111,7 +111,7 @@ linux-rcraid-nvme-raid0/
 ### Option A — mdadm RAID0 (recommended, max throughput)
 
 ```bash
-git clone https://github.com/<owner>/linux-rcraid-nvme-raid0.git
+git clone https://github.com/wickist/linux-rcraid-nvme-raid0.git
 cd linux-rcraid-nvme-raid0
 
 # 1. Create the array on 4 NVMe SSDs (EDIT devices first!)
@@ -129,7 +129,7 @@ See **[docs/04-mdadm-raid0-setup.md](docs/04-mdadm-raid0-setup.md)** for full de
 ### Option B — rcraid DKMS port (BIOS-visible hardware RAID)
 
 ```bash
-git clone https://github.com/<owner>/linux-rcraid-nvme-raid0.git
+git clone https://github.com/wickist/linux-rcraid-nvme-raid0.git
 cd linux-rcraid-nvme-raid0
 
 # 1. Download AMD RAID driver from AMD.com, place the archive in vendor/
